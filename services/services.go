@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"net/http"
 	"time"
@@ -55,10 +56,6 @@ func RegisterUserData(c *gin.Context) {
 
 //JWT FUNC
 
-func CreateToken() {
-
-}
-
 // ---------------------------------------------------------------------------------------------------------------------
 func LoginUser(c *gin.Context) {
 	// 1. Extract user data from request body
@@ -70,37 +67,52 @@ func LoginUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
-	defer db.Close() // Ensure database connection is closed even on errors
+
+	db.SetMaxIdleConns(20)
+	db.SetMaxOpenConns(100)
+	db.SetConnMaxIdleTime(20 * time.Minute)
 
 	// 3. Prepare SQL statement with named parameters (prevents SQL injection)
 	ctx := context.Background()
-	stmt, err := db.PrepareContext(ctx, "SELECT password_user FROM user_table WHERE nama_user = ?")
+	stmt, err := db.QueryContext(ctx, "SELECT iduser_table, nama_user , password_user FROM user_table")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Terjadi Kesalahan Saat Request DB"})
 		return
 	}
 	defer stmt.Close() // Close prepared statement after use
 
-	// 4. Execute query to get the stored hashed password
-	var storedHashedPassword string
-	err = stmt.QueryRowContext(ctx, log.Namauser).Scan(&storedHashedPassword)
-	if err != nil {
+	fmt.Println(log.Namauser)
 
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid credential"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
+	var result []gin.H
+
+	for stmt.Next() {
+		var id int
+		var nama_user string
+		var password_user string
+
+		err := stmt.Scan(&id, &nama_user, &password_user)
+
+		if err != nil {
+			panic(err)
 		}
-		return
+
+		result := append(result, gin.H{"Namauser": nama_user, "id": id})
+
+		password := "Farahdiba21042001"
+
+		err = bcrypt.CompareHashAndPassword([]byte(password_user), []byte(password))
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid credentials"})
+			return
+		}
+
+		c.JSON(http.StatusOK, result)
+
 	}
 
 	// 5. Compare the stored hashed password with the provided password
-	err = bcrypt.CompareHashAndPassword([]byte(storedHashedPassword), []byte(log.Passuser))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid credentials"})
-		return
-	}
 
 	// 6. Successful login
-	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
+
+	defer db.Close() // Ensure database connection is closed even on errors
 }

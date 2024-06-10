@@ -13,7 +13,7 @@ func main() {
 	res := services.LoginUser
 
 	r.POST("api/Register", req)
-	r.POST("api/login", res)
+	r.GET("api/login", res)
 
 	r.Run(":8080")
 
@@ -21,4 +21,4 @@ func main() {
 
 }
 
-//curl -X POST http://localhost:8080/api/login -d '{password_user":"1234","nama_user":"Haliim Pamungkas"}' -H "Content-Type: application/json"
+//curl -X POST http://localhost:8080/api/Register -d '{"nama_user":"Farahdiba", "password_user":"Farahdiba21042001"}' -H "Content-Type: application/json"
