@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"net/http"
 	"time"
@@ -42,7 +41,7 @@ func RegisterUserData(c *gin.Context) {
 	}
 	// Insert data
 
-	_, err = db.Exec("INSERT INTO user_table (nama_user, password_user) VALUES (?, ?)", log.Namauser, encpyt)
+	_, err = db.Exec("INSERT INTO user_table (nama_user, password_user,email_user) VALUES (?, ?, ?)", log.Namauser, encpyt, log.Emailuser)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Bad Request"})
 		return
@@ -57,9 +56,14 @@ func RegisterUserData(c *gin.Context) {
 //JWT FUNC
 
 // ---------------------------------------------------------------------------------------------------------------------
-func LoginUser(c *gin.Context) {
+func GetUser(c *gin.Context) {
 	// 1. Extract user data from request body
 	var log models.UserData
+
+	if err := c.ShouldBindJSON(&log); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		return
+	}
 
 	// 2. Connect to database (consider using a connection pool)
 	db, err := sql.Open("mysql", "root:root@tcp(localhost:3306)/travel_db")
@@ -68,51 +72,53 @@ func LoginUser(c *gin.Context) {
 		return
 	}
 
+	defer db.Close() // Ensure database connection is closed
+
 	db.SetMaxIdleConns(20)
 	db.SetMaxOpenConns(100)
 	db.SetConnMaxIdleTime(20 * time.Minute)
 
 	// 3. Prepare SQL statement with named parameters (prevents SQL injection)
 	ctx := context.Background()
-	stmt, err := db.QueryContext(ctx, "SELECT iduser_table, nama_user , password_user FROM user_table")
+	rows, err := db.QueryContext(ctx, "SELECT  email_user, password_user  FROM user_table")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Terjadi Kesalahan Saat Request DB"})
 		return
 	}
-	defer stmt.Close() // Close prepared statement after use
 
-	fmt.Println(log.Namauser)
+	defer rows.Close() // Ensure rows are closed
 
-	var result []gin.H
+	// 4. Process Results
+	found := false
+	for rows.Next() {
 
-	for stmt.Next() {
-		var id int
-		var nama_user string
+		var email_user string
 		var password_user string
 
-		err := stmt.Scan(&id, &nama_user, &password_user)
-
+		err := rows.Scan(&email_user, &password_user)
 		if err != nil {
-			panic(err)
-		}
-
-		result := append(result, gin.H{"Namauser": nama_user, "id": id})
-
-		password := "Farahdiba21042001"
-
-		err = bcrypt.CompareHashAndPassword([]byte(password_user), []byte(password))
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid credentials"})
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Error processing data"})
 			return
 		}
 
-		c.JSON(http.StatusOK, result)
-
+		// Compare password
+		err = bcrypt.CompareHashAndPassword([]byte(password_user), []byte(log.Passuser))
+		if err == nil {
+			// If credentials match
+			found = true
+			tokenString, err := CreateToken()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"message": "Error creating token"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"Message": "LOGIN BERHASIL", "TOKEN": tokenString})
+			return
+		}
 	}
 
-	// 5. Compare the stored hashed password with the provided password
-
-	// 6. Successful login
-
-	defer db.Close() // Ensure database connection is closed even on errors
+	if !found {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Belum Terdaftar"})
+	}
 }
+
+// ---------------------------------------------------------------------------------------------------------------------

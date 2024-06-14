@@ -10,10 +10,10 @@ import (
 func main() {
 	r := gin.Default()
 	req := services.RegisterUserData
-	res := services.LoginUser
+	res := services.GetUser
 
 	r.POST("api/Register", req)
-	r.GET("api/login", res)
+	r.POST("api/login", res)
 
 	r.Run(":8080")
 
@@ -21,4 +21,4 @@ func main() {
 
 }
 
-//curl -X POST http://localhost:8080/api/Register -d '{"nama_user":"Farahdiba", "password_user":"Farahdiba21042001"}' -H "Content-Type: application/json"
+//curl -X POST http://localhost:8080/api/login -d '{"email_user" : "Fisika@gmail.com","password_user" : "Fisika"}' -H "Content-Type: application/json"
