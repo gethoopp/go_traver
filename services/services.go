@@ -1,7 +1,9 @@
 package services
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 
 	"net/http"
 	"time"
@@ -36,14 +38,15 @@ func RegisterUserData(c *gin.Context) {
 	db.SetConnMaxIdleTime(20 * time.Minute)
 
 	done := make(chan error)
+	defer close(done)
 
 	go func() {
 		_, err = db.Exec("INSERT INTO user_table (nama_user, password_user,email_user) VALUES (?, ?, ?)", log.Namauser, encpyt, log.Emailuser)
-		done <- err
+		done <- err // megnirim data ke dalam channel done
 	}()
 
 	select {
-	case err := <-done:
+	case err := <-done: //mengambil data dari channel done
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "Bad Request"})
 			return
@@ -53,8 +56,6 @@ func RegisterUserData(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Request timed out"})
 	}
 }
-
-//JWT FUNC
 
 // ---------------------------------------------------------------------------------------------------------------------
 func GetUser(c *gin.Context) {
@@ -76,6 +77,7 @@ func GetUser(c *gin.Context) {
 	db.SetConnMaxIdleTime(20 * time.Minute)
 
 	done := make(chan error)
+	defer close(done)
 	var email_user, password_user string
 
 	go func() {
@@ -125,3 +127,69 @@ func GetUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Request timed out"})
 	}
 }
+
+//Get all data from product
+
+func GetData(c *gin.Context) {
+
+	ctx := context.Background()
+
+	// Membuka koneksi database
+	db, err := sql.Open("mysql", "root:root@tcp(localhost:3306)/travel_db")
+	if err != nil {
+		panic(err)
+	}
+
+	defer db.Close()
+
+	chanGet := make(chan error)
+
+	var id int
+	var name string
+	var DetailsProd string
+	defer close(chanGet)
+	var result []gin.H
+
+	go func() {
+		rows, err := db.QueryContext(ctx, "SELECT idproduct_table, product_name, product_detail FROM product_table")
+		if err != nil {
+			chanGet <- err
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			err := rows.Scan(&id, &name, &DetailsProd)
+			if err != nil {
+				chanGet <- err
+				return
+			}
+
+			var DetailsProdMap map[string]interface{}
+
+			if err := json.Unmarshal([]byte(DetailsProd), &DetailsProdMap); err != nil {
+				chanGet <- err
+				return
+			}
+
+			result = append(result, gin.H{"id": id, "NameProd": name, "DetailsProd": DetailsProdMap})
+		}
+
+		chanGet <- nil
+	}()
+
+	select {
+	case err := <-chanGet:
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"Message": "Tidak Berhasil Mendapatkan Data", "Error": err.Error()})
+		} else {
+			c.JSON(http.StatusOK, result)
+		}
+	case <-time.After(5 * time.Second):
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Request timed out"})
+	}
+}
+
+// Payment Gateway menggunakan midtrans
+
+
